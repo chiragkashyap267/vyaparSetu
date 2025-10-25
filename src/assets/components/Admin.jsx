@@ -95,10 +95,14 @@ export default function AdminDashboard() {
       setLoading(true);
       const snapshot = await get(ref(db, "agents"));
       const data = snapshot.val() || {};
+      const currentUser = auth.currentUser;
+
       const agentList = Object.keys(data).map((uid) => {
-        const email = data[uid].email || "";
+        // Use email from DB, fallback to Auth user email if same UID
+        const email = data[uid].email || (currentUser?.uid === uid ? currentUser.email : "Unknown");
         const namePart = email ? email.split("@")[0] : "Unknown";
         const formattedName = namePart.charAt(0).toUpperCase() + namePart.slice(1).toLowerCase();
+
         return {
           id: uid,
           agentName: formattedName,
@@ -107,8 +111,8 @@ export default function AdminDashboard() {
           registrations: data[uid].registrations
             ? Object.entries(data[uid].registrations).map(([key, value]) => ({
                 id: key,
-                paymentURL: value.paymentURL || "", // Add your public URL here
-                documentURL: value.documentURL || "", // Add your public URL here
+                paymentURL: value.paymentURL || "",
+                documentURL: value.documentURL || "",
                 ...value,
               }))
             : [],
@@ -155,7 +159,7 @@ export default function AdminDashboard() {
     fetchAgents();
   };
 
-  // --- Export PDF (Fixed Clickable Links) ---
+  // --- Export PDF ---
   const exportPDF = () => {
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
     doc.setFontSize(16);
@@ -196,7 +200,7 @@ export default function AdminDashboard() {
       alternateRowStyles: { fillColor: [245, 245, 245] },
       theme: "grid",
       didDrawCell: (data) => {
-        if (data.section === "head") return; // skip header
+        if (data.section === "head") return;
         const reg = registrations[data.row.index];
         if (!reg) return;
 
@@ -204,13 +208,8 @@ export default function AdminDashboard() {
         const x = cell.x + 2;
         const y = cell.y + cell.height / 2 + 3;
 
-        if (data.column.index === 8 && reg.paymentURL) {
-          createPDFLink(doc, "View Payment", x, y, reg.paymentURL);
-        }
-
-        if (data.column.index === 9 && reg.documentURL) {
-          createPDFLink(doc, "View Document", x, y, reg.documentURL);
-        }
+        if (data.column.index === 8 && reg.paymentURL) createPDFLink(doc, "View Payment", x, y, reg.paymentURL);
+        if (data.column.index === 9 && reg.documentURL) createPDFLink(doc, "View Document", x, y, reg.documentURL);
       },
     });
 

@@ -1,35 +1,68 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
+import { getDatabase, ref, get, set } from "firebase/database";
 import { app } from "./firebase";
 
 const auth = getAuth(app);
+const db = getDatabase(app);
 
 export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const adminEmails = ["admin@gmail.com", "vyaparadmin@gmail.com"];
+
+  // Save agent email to database - FIXED VERSION
+  const saveAgentEmail = async (user) => {
+    if (!user?.email) return;
+    try {
+      const agentRef = ref(db, `agents/${user.uid}`);
+      const snapshot = await get(agentRef);
+      const existingData = snapshot.val() || {};
+      
+      // Use set() instead of update() to ensure the data is created if it doesn't exist
+      await set(agentRef, { 
+        email: user.email,
+        mobile: existingData.mobile || "",
+        lastLogin: new Date().toISOString(),
+        registrations: existingData.registrations || {} // Preserve existing registrations
+      });
+      console.log(`✅ Email saved for agent: ${user.email}`);
+    } catch (error) {
+      console.error("Error saving email:", error);
+    }
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
+    setLoading(true);
 
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
+      // Check if admin first
       if (adminEmails.includes(user.email)) {
+        setLoading(false);
         navigate("/admin");
-        return;
+        return; // Exit here, don't save email or navigate to dashboard
       }
 
+      // Save email for agents (this now properly creates/updates the agent entry)
+      await saveAgentEmail(user);
+
+      // Navigate to agent dashboard
+      setLoading(false);
       navigate("/dashboard", { state: { userEmail: user.email } });
     } catch (err) {
       console.error(err);
       setError("Invalid credentials. Please try again.");
+      setLoading(false);
     }
   };
 
@@ -77,6 +110,7 @@ export default function Login() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              disabled={loading}
               style={{ background: "#f1f5f9" }}
             />
           </div>
@@ -90,6 +124,7 @@ export default function Login() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              disabled={loading}
               style={{ background: "#f1f5f9" }}
             />
           </div>
@@ -97,22 +132,37 @@ export default function Login() {
           <button
             type="submit"
             className="btn w-100 fw-bold text-white"
+            disabled={loading}
             style={{
-              background: "linear-gradient(135deg, #0d6efd, #6610f2)",
+              background: loading 
+                ? "linear-gradient(135deg, #6c757d, #495057)" 
+                : "linear-gradient(135deg, #0d6efd, #6610f2)",
               padding: "12px 0",
               borderRadius: "50px",
               boxShadow: "0 4px 15px rgba(13, 110, 253, 0.4)",
               fontSize: "1.1rem",
               transition: "all 0.3s ease",
+              cursor: loading ? "not-allowed" : "pointer"
             }}
-            onMouseOver={(e) =>
-              (e.target.style.boxShadow = "0 6px 20px rgba(13, 110, 253, 0.6)")
-            }
-            onMouseOut={(e) =>
-              (e.target.style.boxShadow = "0 4px 15px rgba(13, 110, 253, 0.4)")
-            }
+            onMouseOver={(e) => {
+              if (!loading) {
+                e.target.style.boxShadow = "0 6px 20px rgba(13, 110, 253, 0.6)";
+              }
+            }}
+            onMouseOut={(e) => {
+              if (!loading) {
+                e.target.style.boxShadow = "0 4px 15px rgba(13, 110, 253, 0.4)";
+              }
+            }}
           >
-            Login
+            {loading ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                Logging in...
+              </>
+            ) : (
+              "Login"
+            )}
           </button>
         </form>
 
